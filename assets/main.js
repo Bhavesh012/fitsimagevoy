@@ -112,7 +112,7 @@ async function updateHeaderInfo(data) {
     const values = { "vmin" : renderedClim[0], "vmax": renderedClim[1] };
     const climSettings = ["vmin", "vmax"].map((label) => {
         return `<vscode-text-field type="text" id="${label}" label="${label}" 
-        value="${formatClimValue(values?.[label])}" onchange="updateClim()"></vscode-text-field>`;
+        value="${formatClimValue(values?.[label])}" onchange="updateClim()">${label}</vscode-text-field>`;
     }).join('');
 
     const resetButton = `<vscode-button appearance="secondary" onclick="resetClim()">Reset</vscode-button>`;

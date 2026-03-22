@@ -6,6 +6,7 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { ChildProcess, spawn } from 'child_process';
+import { readFile } from 'fs/promises';
 const osvar = process.platform;
 const path = require("path");
 const requirements = path.join(__dirname, "python/requirements.txt");
@@ -640,7 +641,6 @@ class CustomDocument implements vscode.CustomDocument {
 
 // Activate the extension
 export function activate(context: vscode.ExtensionContext) {
-
     const pythonInterpreterPath: string | undefined = vscode.workspace.getConfiguration('python').get('defaultInterpreterPath');
     
     let command = '';
