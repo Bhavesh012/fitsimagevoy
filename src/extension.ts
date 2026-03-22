@@ -76,7 +76,7 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv=“Content-Security-Policy” content=“font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: ‘unsafe-inline’; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: ‘unsafe-inline’; script-src ‘self’ ‘self’ https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io ‘unsafe-inline’; img-src ‘self’ ‘self’ https://*.vscode-cdn.net data:;“>
+            <meta http-equiv=“Content-Security-Policy” content=“font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;“>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Your Custom Editor</title>
             <link href="${stylePath}" rel="stylesheet" type="text/css" >
@@ -149,6 +149,7 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
                     <h2 id="placeholderText" style="display: none;">No image to display.</h2>
+                    <h2 id="imageErrorText" style="display: none; color: red ">Error loading image.</h2>
                 </div>
             </div>
             <script type="module" src="${webviewUri}"></script>
@@ -319,7 +320,12 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         };
     
         // Call the open method to load the header
-        await document.open();
+        try {
+            await document.open();
+        } catch (error) {
+            vscode.window.showErrorMessage(`FitsImageVOY: failed to open FITS file: ${String(error)}`);
+            return;
+        }
 
         // Set the webview for the document
         await this.setWebviewForDocument(document, webviewPanel);
@@ -365,7 +371,17 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
             coalesceTimer = setTimeout(async () => {
                 coalesceTimer = undefined;
 
-                await document.open();
+                try {
+                    await document.open();
+                } catch (error) {
+                    vscode.window.showErrorMessage(`FitsImageVOY: Encountered rendering error: ${String(error)}`);
+                    await webviewPanel.webview.postMessage({
+                        command: 'renderError',
+                        error: String(error),
+                        reason: reason,
+                    });
+                    return;
+                }
 
                 if (requestId !== latestRenderRequestId) {
                     return; // Stale request, drop it
@@ -377,7 +393,7 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                     reason: reason,
                 });
             }, COALESCE_MS);
-        }
+        };
 
         // Handle messages from the webview
         webviewPanel.webview.onDidReceiveMessage(
@@ -475,7 +491,7 @@ class CustomDocument implements vscode.CustomDocument {
     }
 
     set file(value: any) {
-        this._selectedHdu = value;
+        this._file = value;
     }
 
     get options(): any {
@@ -505,15 +521,18 @@ class CustomDocument implements vscode.CustomDocument {
         this._file = await this.generateImageFromFits(this._uri.fsPath, this._options['colormap'], this._options['scale'], this._options['clim']);
 
         // Initialize a variable to store the selected element
-        this._selectedHdu = 0;
+        if (!Number.isInteger(this._selectedHdu) || !this._file[`hdu${this._selectedHdu}`]) {
+            this._selectedHdu = 0; // If selectedHdu isn't set or isn't valid, fallback to HDU 0
+        
 
-        // Iterate over the elements and find the first one with encoded_image not equal to none
-        for (const key in this._file) {
-            const element = this._file[key];
+            // Iterate over the elements and find the first one with encoded_image not equal to none
+            for (const key in this._file) {
+                const element = this._file[key];
 
-            if (element['encoded_image'] !== false) {
-                this._selectedHdu = parseInt(key.replace('hdu', ''), 10);
-                break;
+                if (element['encoded_image'] !== false) {
+                    this._selectedHdu = parseInt(key.replace('hdu', ''), 10);
+                    break;
+                }
             }
         }
     }
@@ -558,29 +577,59 @@ class CustomDocument implements vscode.CustomDocument {
             const pythonProcess = spawn('bash', ['-c', combinedCommand]);
             
             let result = '';  // Variable to store the base64-encoded image data
+            let stderrText = '';
+            let settled = false;
+
+            // Prevent accidental duplicate promise resolves/rejects (easier debugging)
+            const failOnce = (err: Error) => {
+                if (settled) return;
+                settled = true;
+                reject(err);
+            };
+
+            const resolveOnce = (value: any) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+
             if (pythonProcess?.stdout && pythonProcess?.stderr) {
+
                 pythonProcess.stdout.on('data', (data) => {
                     // Handle data received from the Python script
                     result += data.toString();
                 });
         
                 pythonProcess.stderr.on('data', (data) => {
-                    // Handle errors or messages from the Python script
-                    console.error(`Python stderr: ${data}`);
-                    reject(new Error(`Failed to generate image from FITS file.`));
+                    stderrText += data.toString(); // collect, but do not fail yet
+                });
+
+                pythonProcess.on('error', (err) => {
+                    failOnce(new Error(`Failed to start Python process: ${String(err)}`))
                 });
         
-                pythonProcess.on('exit', (code) => {
+                pythonProcess.on('close', (code) => {
+                    // Check for positive exit
+                    if (code !== 0) {
+                        return failOnce(
+                            new Error(
+                            `Failed to generate image from FITS file (exit ${code}). ${stderrText.trim() || 'No stderr output.'}`
+                        ));
+                    }
+
                     try {
                         const output = JSON.parse(result);
-                        resolve(output);
+                        resolveOnce(output);
                     } catch (error) {
-                        console.error(`Failed to parse Python script output: ${error}`);
-                        reject(new Error(`Failed to generate image from FITS file.`));
+                        failOnce(
+                            new Error(
+                                `Failed to parse Python output as JSON. ${stderrText.trim() || String(error)}`
+                            )
+                        )
                     }
                 });
             } else {
-                reject(new Error('Failed to start the Python process.'));
+                failOnce(new Error('Failed to start the Python process.'));
             }
         
         });
@@ -591,6 +640,7 @@ class CustomDocument implements vscode.CustomDocument {
 
 // Activate the extension
 export function activate(context: vscode.ExtensionContext) {
+
     const pythonInterpreterPath: string | undefined = vscode.workspace.getConfiguration('python').get('defaultInterpreterPath');
     
     let command = '';

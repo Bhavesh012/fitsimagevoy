@@ -77,7 +77,7 @@ var CustomEditorProvider = class {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv=\u201CContent-Security-Policy\u201D content=\u201Cfont-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: \u2018unsafe-inline\u2019; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: \u2018unsafe-inline\u2019; script-src \u2018self\u2019 \u2018self\u2019 https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io \u2018unsafe-inline\u2019; img-src \u2018self\u2019 \u2018self\u2019 https://*.vscode-cdn.net data:;\u201C>
+            <meta http-equiv=\u201CContent-Security-Policy\u201D content=\u201Cfont-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;\u201C>
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Your Custom Editor</title>
             <link href="${stylePath}" rel="stylesheet" type="text/css" >
@@ -150,6 +150,7 @@ var CustomEditorProvider = class {
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
                     <h2 id="placeholderText" style="display: none;">No image to display.</h2>
+                    <h2 id="imageErrorText" style="display: none; color: red ">Error loading image.</h2>
                 </div>
             </div>
             <script type="module" src="${webviewUri}"></script>
@@ -301,7 +302,12 @@ var CustomEditorProvider = class {
     webviewPanel.webview.options = {
       enableScripts: true
     };
-    await document.open();
+    try {
+      await document.open();
+    } catch (error) {
+      vscode.window.showErrorMessage(`FitsImageVOY: failed to open FITS file: ${String(error)}`);
+      return;
+    }
     await this.setWebviewForDocument(document, webviewPanel);
     const darkKinds = [
       vscode.ColorThemeKind.Dark,
@@ -331,7 +337,17 @@ var CustomEditorProvider = class {
       }
       coalesceTimer = setTimeout(async () => {
         coalesceTimer = void 0;
-        await document.open();
+        try {
+          await document.open();
+        } catch (error) {
+          vscode.window.showErrorMessage(`FitsImageVOY: Encountered rendering error: ${String(error)}`);
+          await webviewPanel.webview.postMessage({
+            command: "renderError",
+            error: String(error),
+            reason
+          });
+          return;
+        }
         if (requestId !== latestRenderRequestId) {
           return;
         }
@@ -411,7 +427,7 @@ var CustomDocument = class {
     return this._file;
   }
   set file(value) {
-    this._selectedHdu = value;
+    this._file = value;
   }
   get options() {
     return this._options;
@@ -428,12 +444,14 @@ var CustomDocument = class {
   // Implement the open method to load the header
   async open() {
     this._file = await this.generateImageFromFits(this._uri.fsPath, this._options["colormap"], this._options["scale"], this._options["clim"]);
-    this._selectedHdu = 0;
-    for (const key in this._file) {
-      const element = this._file[key];
-      if (element["encoded_image"] !== false) {
-        this._selectedHdu = parseInt(key.replace("hdu", ""), 10);
-        break;
+    if (!Number.isInteger(this._selectedHdu) || !this._file[`hdu${this._selectedHdu}`]) {
+      this._selectedHdu = 0;
+      for (const key in this._file) {
+        const element = this._file[key];
+        if (element["encoded_image"] !== false) {
+          this._selectedHdu = parseInt(key.replace("hdu", ""), 10);
+          break;
+        }
       }
     }
   }
@@ -456,25 +474,51 @@ var CustomDocument = class {
             `;
       const pythonProcess = (0, import_child_process.spawn)("bash", ["-c", combinedCommand]);
       let result = "";
+      let stderrText = "";
+      let settled = false;
+      const failOnce = (err) => {
+        if (settled)
+          return;
+        settled = true;
+        reject(err);
+      };
+      const resolveOnce = (value) => {
+        if (settled)
+          return;
+        settled = true;
+        resolve(value);
+      };
       if (pythonProcess?.stdout && pythonProcess?.stderr) {
         pythonProcess.stdout.on("data", (data) => {
           result += data.toString();
         });
         pythonProcess.stderr.on("data", (data) => {
-          console.error(`Python stderr: ${data}`);
-          reject(new Error(`Failed to generate image from FITS file.`));
+          stderrText += data.toString();
         });
-        pythonProcess.on("exit", (code) => {
+        pythonProcess.on("error", (err) => {
+          failOnce(new Error(`Failed to start Python process: ${String(err)}`));
+        });
+        pythonProcess.on("close", (code) => {
+          if (code !== 0) {
+            return failOnce(
+              new Error(
+                `Failed to generate image from FITS file (exit ${code}). ${stderrText.trim() || "No stderr output."}`
+              )
+            );
+          }
           try {
             const output = JSON.parse(result);
-            resolve(output);
+            resolveOnce(output);
           } catch (error) {
-            console.error(`Failed to parse Python script output: ${error}`);
-            reject(new Error(`Failed to generate image from FITS file.`));
+            failOnce(
+              new Error(
+                `Failed to parse Python output as JSON. ${stderrText.trim() || String(error)}`
+              )
+            );
           }
         });
       } else {
-        reject(new Error("Failed to start the Python process."));
+        failOnce(new Error("Failed to start the Python process."));
       }
     });
   }

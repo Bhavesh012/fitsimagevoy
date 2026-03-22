@@ -151,9 +151,11 @@ async function updateHeaderInfo(data) {
     if (file[`hdu${selectedHdu}`].encoded_image) {
         document.getElementById('imageDiv').style.display = 'block';
         document.getElementById('placeholderText').style.display = 'none';
+        document.getElementById('imageErrorText').style.display = 'none';
     } else {
         document.getElementById('imageDiv').style.display = 'none';
         document.getElementById('placeholderText').style.display = 'block';
+        document.getElementById('imageErrorText').style.display = 'none';
     }
 
     return;
@@ -209,6 +211,8 @@ window.addEventListener('message', async event => {
     }
 
     if (message.command === 'updateImage') {
+        document.getElementById('imageErrorText').style.display = 'none';
+        document.getElementById('imageDiv').style.display = 'flex';
         await updateImageContent(message.data);
         updateClimInputFields(message.data);
         setLoading(false);
@@ -218,6 +222,15 @@ window.addEventListener('message', async event => {
     if (message.command === 'updateTheme') {
         await updateTheme(message.data);
         attachFigureResizeObserver();
+    }
+
+    if (message.command === 'renderError') {
+        setLoading(false);
+        console.log(`Error encountered while rerendering for ${message.reason}.`);
+        console.log(message.error);
+        document.getElementById('imageDiv').style.display = 'none';
+        document.getElementById('placeholderText').style.display = 'none';
+        document.getElementById('imageErrorText').style.display = 'block';
     }
 });
 
@@ -278,7 +291,8 @@ async function updateClimInputFields(data) {
     const { file, selectedHdu, _ } = JSON.parse(data);
 
     // Update input fields
-    const renderedClim = file[`hdu${selectedHdu}`].clim;
+    const selectedHduData = file[`hdu${selectedHdu}`] ?? {};
+    const renderedClim = Array.isArray(selectedHduData.clim) ? selectedHduData.clim : [null, null];
     const values = { "vmin" : renderedClim[0], "vmax": renderedClim[1] };
 
     const vminEl = document.getElementById("vmin")
@@ -304,6 +318,7 @@ function generateNonce() {
 // Define the handleSearch function
 function handleSearch(searchInput) {
     const searchValue = searchInput.value.toLowerCase();
+    const container = document.getElementById('headerInfoSection')
 
     // Select all rows in the table
     const rows = container.querySelectorAll('vscode-data-grid-row');
