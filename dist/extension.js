@@ -396,10 +396,12 @@ var CustomDocument = class {
     const defaultColormap = configuration.get("defaultColormap", "viridis");
     const defaultScale = configuration.get("defaultScale", "linear");
     const defaultClim = configuration.get("defaultClim", { vmin: null, vmax: null });
+    const hduLabels = configuration.get("hduLabels", "index");
     this.options = {
       "colormap": defaultColormap,
       "scale": defaultScale,
-      "clim": defaultClim
+      "clim": defaultClim,
+      "hduLabels": hduLabels
     };
   }
   get uri() {

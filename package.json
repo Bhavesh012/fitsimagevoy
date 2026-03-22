@@ -17,22 +17,34 @@
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
-      "myExtension.defaultColormap": {
-        "type": "string",
-        "default": "viridis",
-        "description": "Default colormap for the extension plots."
-      },
-      "myExtension.defaultScale": {
-        "type": "string",
-        "default": "linear",
-        "enum": [
-          "linear",
-          "logarithmic",
-          "power",
-          "sqrt",
-          "squared"
-        ],
-        "description": "Default scale for the extension plots."
+      "properties": {
+        "fitsimagevoy.defaultColormap": {
+          "type": "string",
+          "default": "viridis",
+          "description": "Default colormap for the extension plots."
+        },
+        "fitsimagevoy.defaultScale": {
+          "type": "string",
+          "default": "linear",
+          "enum": [
+            "linear",
+            "logarithmic",
+            "power",
+            "sqrt",
+            "squared"
+          ],
+          "description": "Default scale for the extension plots."
+        },
+        "fitsimagevoy.hduLabels": {
+          "type": "string",
+          "default": "index",
+          "enum": [
+            "index",
+            "name",
+            "nameAndIndex"
+          ],
+          "description": "How HDUs are labeled in the dropdown."
+        }
       }
     },
     "customEditors": [

@@ -39,10 +39,36 @@ async function updateHeaderInfo(data) {
     const { file, selectedHdu, options } = JSON.parse(data);
 
     // -------- Begin HDU selector -------- //
-    // Update the HDU list and select the specified HDU
+    const hduLabels = options.hduLabels ?? 'index';
+
+    // define function for escaping special HTML characters from HDU names
+    // Source - https://stackoverflow.com/a/6234804
+    // Posted by bjornd, modified by community. See post 'Timeline' for change history
+    // Retrieved 2026-03-21, License - CC BY-SA 4.0
+    const escapeHtml = unsafe => {
+    return unsafe
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    };
+
     hduSelector.innerHTML = Object.keys(file).map((element, index) => {
         const isSelected = index === selectedHdu;
-        return `<vscode-option value="${index}" ${isSelected ? 'selected' : ''} >HDU ${index}</vscode-option>`;
+
+        const header = file[element]?.header ?? {};
+        const rawName = header.EXTNAME ?? header.HDUNAME ?? null;
+        const hduName = (typeof rawName === 'string' && rawName.trim()) ? rawName.trimStart() : null;
+
+        let label = `HDU ${index}`;
+        if (hduLabels === 'name' && hduName) {
+            label = hduName;
+        } else if (hduLabels === 'nameAndIndex' && hduName) {
+            label = `${hduName} (HDU ${index})`;
+        }
+
+        return `<vscode-option value="${index}" ${isSelected ? 'selected' : ''}>${escapeHtml(label)}</vscode-option>`;
     }).join('');
 
     // Listen for change event on hduSelector
@@ -81,7 +107,8 @@ async function updateHeaderInfo(data) {
     // -------- End of scale selector -------- //
 
     // -------- Begin clim input -------- //
-    const renderedClim = file[`hdu${selectedHdu}`].clim;
+    const selectedHduData = file[`hdu${selectedHdu}`] ?? {};
+    const renderedClim = Array.isArray(selectedHduData.clim) ? selectedHduData.clim : [null, null];
     const values = { "vmin" : renderedClim[0], "vmax": renderedClim[1] };
     const climSettings = ["vmin", "vmax"].map((label) => {
         return `<vscode-text-field type="text" id="${label}" label="${label}" 
@@ -100,7 +127,7 @@ async function updateHeaderInfo(data) {
 
     // -------- Begin header info table -------- //
     // Display header keys and values in a table for the selected HDU
-    const selectedHeader = file[`hdu${selectedHdu}`].header;
+    const selectedHeader = file[`hdu${selectedHdu}`].header ?? {};
     const tableHtml = `
         <vscode-data-grid>
             <vscode-data-grid-row row-type="sticky-header">
@@ -314,8 +341,8 @@ function initSectionSizes() {
 
     optionsSection.style.width = '40%'; // default width
     headerInfoSection.style.width = '60%'; // remaining width
-    headerInfoContainer.style.height = '47%'; // default height
-    imageSection.style.height = '43%'; // remaining height
+    headerInfoContainer.style.height = '50%'; // default height
+    imageSection.style.height = '40%'; // remaining height
 
     requestAnimationFrame(() => saveSectionSizesInPx())
 }
