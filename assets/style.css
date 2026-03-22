@@ -118,8 +118,10 @@ h1, h2 {
     margin: 0;
 }
 
-#input {
+#input,
+#tableSearch {
     margin-left: auto; /* Push the search field to the right */
+    margin-right: 0;
 }
 
 #headerInfo {
@@ -160,9 +162,53 @@ h1, h2 {
     display: flex;
     align-items: center;
     justify-content: center;
-    width:100%;
     height: 100%;
     margin-top: 25px;
+}
+
+#imageDiv.withTable {
+    flex-direction: column;
+    margin: 20px;
+    width: 60%; /* Adjust to fill the entire height minus any borders or padding */
+    overflow-y: scroll; 
+    min-width: 25%;
+    margin-top: 0px;
+}
+
+#imageAndTableContainer {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+#tableDiv {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 90%; 
+    width: 60%; /* Adjust to fill the entire height minus any borders or padding */
+    min-width: 25%;
+    overflow: hidden;
+    padding: 0px 12px 12px;
+}
+
+#tableDataInfo {
+    display: flex;
+    align-items: center;
+    margin: 8px 0 10px 0;
+    flex: 0 0 auto;
+}
+
+#tableDataInfo h2 {
+    margin: 0
+}
+
+#tableData {
+    flex: 1 1 auto;
+    overflow: auto;
+    margin: 0;
 }
 
 #mpld3Figure2 {

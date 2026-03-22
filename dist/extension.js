@@ -109,17 +109,21 @@ var CustomEditorProvider = class {
                             <vscode-data-grid id="basic-grid" aria-label="Basic"></vscode-data-grid>
                         </div>
 
-                        <vscode-divider role="presentation"></vscode-divider>
+                        <div id="optionContainer">
 
-                        <vscode-radio-group id="colorSelector"></vscode-radio-group>
+                            <vscode-divider role="presentation"></vscode-divider>
+                            
+                            <div id="selector1"></div>
 
-                        <vscode-divider role="presentation"></vscode-divider>
+                            <vscode-divider role="presentation"></vscode-divider>
 
-                        <vscode-radio-group id="scaleSelector"></vscode-radio-group>
+                            <div id="selector2"></div>
 
-                        <vscode-divider role="presentation"></vscode-divider>
-                        
-                        <div id="climInput"></div>
+                            <vscode-divider role="presentation"></vscode-divider>
+
+                            <div id="selector3"></div>
+
+                        </div>
 
                     </div>
 
@@ -144,8 +148,10 @@ var CustomEditorProvider = class {
                     <div id="imageLoadingOverlay" hidden>
                         <span class="codicon codicon-loading codicon-modifier-spin"></span>
                     </div>
-                    <div id="imageDiv" class="responsive-plot">
-                        ${isImage ? document.file[selected].html_plot : ""}
+                    <div id="imageAndTableContainer">
+                        <div id="imageDiv" class="responsive-plot">
+                            ${isImage ? document.file[selected].html_plot : ""}
+                        </div>
                     </div>
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
@@ -265,6 +271,56 @@ var CustomEditorProvider = class {
                     });
                 }
 
+                function updateCols() {
+                    setLoading(true);
+
+                    const xColEl = document.getElementById("xColSelect")
+                    const yColEl = document.getElementById("yColSelect")
+                    
+                    newCols = { x: xColEl.value, y: yColEl.value}
+                    vscode.postMessage({
+                        command: 'colsChanged',
+                        newCols: newCols
+                    });
+                }
+                
+                // Update the scale value in the options
+                function updateXTableScale(event) {
+                    setLoading(true);
+
+                    // Post a message to VS Code
+                    vscode.postMessage({
+                        command: 'tableXScaleChanged',
+                        newXScale: event,
+                    });
+                }
+
+                function updateYTableScale(event) {
+                    setLoading(true);
+
+                    // Post a message to VS Code
+                    vscode.postMessage({
+                        command: 'tableYScaleChanged',
+                        newYScale: event,
+                    });
+                }
+
+                function updatePointSize(event) {
+                    setLoading(true);
+                    vscode.postMessage({
+                        command: 'pointSizeChanged',
+                        newPointSize: event,
+                    });
+                }
+
+                function updatePlotType(event) {
+                    setLoading(true);
+                    vscode.postMessage({
+                        command: 'plotTypeChanged',
+                        newPlotType: event,
+                    });
+                }
+
                 // Adjust the scale on page load and whenever the window is resized
                 document.addEventListener('DOMContentLoaded',  () => {
                     // Dynamically create a script element for main.js
@@ -371,6 +427,11 @@ var CustomEditorProvider = class {
               command: "updateHeaderInfo",
               data: buildImagePayload()
             });
+            await webviewPanel.webview.postMessage({
+              command: "updateImage",
+              data: buildImagePayload(),
+              reason: "initialLoad"
+            });
             break;
           case "colormapChanged":
             document.options.colormap = message.newColormap;
@@ -387,6 +448,26 @@ var CustomEditorProvider = class {
             break;
           case "climReset":
             document.options.clim = message.newClim;
+            scheduleImageRender(message.command);
+            break;
+          case "colsChanged":
+            document.options.cols = message.newCols;
+            scheduleImageRender(message.command);
+            break;
+          case "tableXScaleChanged":
+            document.options.tableScale.x = message.newXScale;
+            scheduleImageRender(message.command);
+            break;
+          case "tableYScaleChanged":
+            document.options.tableScale.y = message.newYScale;
+            scheduleImageRender(message.command);
+            break;
+          case "pointSizeChanged":
+            document.options.pointSize = message.newPointSize;
+            scheduleImageRender(message.command);
+            break;
+          case "plotTypeChanged":
+            document.options.plotType = message.newPlotType;
             scheduleImageRender(message.command);
             break;
         }
@@ -412,11 +493,19 @@ var CustomDocument = class {
     const defaultColormap = configuration.get("defaultColormap", "viridis");
     const defaultScale = configuration.get("defaultScale", "linear");
     const defaultClim = configuration.get("defaultClim", { vmin: null, vmax: null });
+    const defaultCols = configuration.get("defaultCols", { vmin: null, vmax: null });
+    const defaultTableScale = configuration.get("defaultTableScale", { x: "linear", y: "linear" });
+    const defaultPointSize = configuration.get("defaultPointSize", 1);
+    const defaultPlotType = configuration.get("defaultPlotType", "line");
     const hduLabels = configuration.get("hduLabels", "index");
     this.options = {
       "colormap": defaultColormap,
       "scale": defaultScale,
       "clim": defaultClim,
+      "cols": defaultCols,
+      "tableScale": defaultTableScale,
+      "pointSize": defaultPointSize,
+      "plotType": defaultPlotType,
       "hduLabels": hduLabels
     };
   }
@@ -443,7 +532,7 @@ var CustomDocument = class {
   }
   // Implement the open method to load the header
   async open() {
-    this._file = await this.generateImageFromFits(this._uri.fsPath, this._options["colormap"], this._options["scale"], this._options["clim"]);
+    this._file = await this.generateImageFromFits(this._uri.fsPath, this._options);
     if (!Number.isInteger(this._selectedHdu) || !this._file[`hdu${this._selectedHdu}`]) {
       this._selectedHdu = 0;
       for (const key in this._file) {
@@ -455,7 +544,7 @@ var CustomDocument = class {
       }
     }
   }
-  async generateImageFromFits(fitsFilePath, colormap, scale, clim) {
+  async generateImageFromFits(fitsFilePath, options) {
     return new Promise((resolve, reject) => {
       const pythonInterpreterPath = vscode.workspace.getConfiguration("python").get("defaultInterpreterPath");
       let command = "";
@@ -464,13 +553,12 @@ var CustomDocument = class {
       } else {
         command = pythonInterpreterPath;
       }
-      const climArgs = ["vmin", "vmax"].flatMap((k) => clim?.[k] === null ? [] : [`--${k}`, String(clim?.[k])]);
-      const climArgsStr = climArgs.map((s) => JSON.stringify(s)).join(" ");
-      const activationCommand = "";
       const pythonScriptPath = path.join(__dirname, "python", "generate_image.py");
+      const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options).join(" ");
+      const activationCommand = "";
       const combinedCommand = `
                 ${activationCommand} > /dev/null 2>&1 &&
-                ${command} ${pythonScriptPath} "${fitsFilePath}" ${colormap} ${scale} ${climArgsStr}
+                ${pythonInterpreterPath} ${argv}
             `;
       const pythonProcess = (0, import_child_process.spawn)("bash", ["-c", combinedCommand]);
       let result = "";
@@ -502,7 +590,7 @@ var CustomDocument = class {
           if (code !== 0) {
             return failOnce(
               new Error(
-                `Failed to generate image from FITS file (exit ${code}). ${stderrText.trim() || "No stderr output."}`
+                `Failed to generate image from FITS file (exit ${code}). ${stderrText.trim() || result.trim() || "No output."}`
               )
             );
           }
@@ -525,6 +613,24 @@ var CustomDocument = class {
   dispose() {
   }
 };
+function buildPythonArgs(scriptPath, fitsFilePath, options) {
+  const args = [scriptPath, fitsFilePath];
+  const add = (flag, val) => {
+    if (val !== void 0 && val !== null)
+      args.push(flag, String(val));
+  };
+  add("--colormap", options.colormap);
+  add("--scale", options.scale);
+  add("--vmin", options.clim?.vmin);
+  add("--vmax", options.clim?.vmax);
+  add("--x_col", options.cols?.x);
+  add("--y_col", options.cols?.y);
+  add("--table_scale_x", options.tableScale?.x);
+  add("--table_scale_y", options.tableScale?.y);
+  add("--plot_type", options.plotType);
+  add("--point_size", options.pointSize);
+  return args;
+}
 function activate(context) {
   const pythonInterpreterPath = vscode.workspace.getConfiguration("python").get("defaultInterpreterPath");
   let command = "";
