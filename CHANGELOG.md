@@ -6,7 +6,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [0.0.6] - 2026-03-22
 
-- Adds several features (vmin/vmax, dark mode support, etc).
+- Adds several features, to include: vmin/vmax, dark mode supprt, support for binary table HDUs.
 - Fixes a few minor bugs and allows vscode settings changes.
 
 ## [0.0.5] - 2024-01-25
