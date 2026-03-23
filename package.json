@@ -35,6 +35,22 @@
           ],
           "description": "Default scale for the extension plots."
         },
+        "fitsimagevoy.defaultPlotType": {
+          "type": "string",
+          "default": "line",
+          "enum": [
+            "line",
+            "scatter",
+            "line_scatter",
+            "step"
+          ],
+          "description": "Default plot type used when displaying binary table HDUs."
+        },
+        "fitsimagevoy.defaultPointSize": {
+          "type": "float",
+          "default": 1,
+          "description": "Default point size used for scatter-type plots."
+        },
         "fitsimagevoy.hduLabels": {
           "type": "string",
           "default": "index",

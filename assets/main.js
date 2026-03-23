@@ -275,7 +275,7 @@ async function tablePlotOptions(data) {
     selector3.innerHTML = `
         <label for="pointSizeSlider">Point Size</label>
         <input type="range" id="pointSizeSlider" min="1" max="20" value="${pointSize}" 
-            style="width: 150px; margin: 0 10px;" onchange="updatePointSize(this.value)">
+            style="width: 150px; margin: 0 10px;" oninput="interactivePointSize(this.value)" onchange="updatePointSize(this.value)">
         <span id="pointSizeValue">${pointSize}</span>
         <div style="margin-top: 12px;">
             <vscode-radio-group>

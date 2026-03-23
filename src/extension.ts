@@ -316,6 +316,11 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                         newYScale: event,
                     });
                 }
+                
+                function interactivePointSize(event) {
+                    const psv = document.getElementById("pointSizeValue");
+                    psv.innerHTML = event;
+                }
 
                 function updatePointSize(event) {
                     setLoading(true);
@@ -586,7 +591,7 @@ class CustomDocument implements vscode.CustomDocument {
         const defaultColormap = configuration.get('defaultColormap', 'viridis');
         const defaultScale = configuration.get('defaultScale', 'linear');
         const defaultClim = configuration.get('defaultClim', { vmin: null, vmax: null });
-        const defaultCols = configuration.get('defaultCols', { vmin: null, vmax: null });
+        const defaultCols = configuration.get('defaultCols', { x: null, y: null });
         const defaultTableScale = configuration.get('defaultTableScale', { x: 'linear', y: 'linear'});
         const defaultPointSize = configuration.get('defaultPointSize', 1);
         const defaultPlotType = configuration.get('defaultPlotType', 'line');
@@ -689,7 +694,7 @@ class CustomDocument implements vscode.CustomDocument {
             const activationCommand = '';
             const combinedCommand = `
                 ${activationCommand} > /dev/null 2>&1 &&
-                ${pythonInterpreterPath} ${argv}
+                ${command} ${argv}
             `;
 
             // Combine activation and Python commands
