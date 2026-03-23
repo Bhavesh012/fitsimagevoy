@@ -118,11 +118,11 @@ async function updateHeaderInfo(data) {
 
     // Display the image if it exists, otherwise display placeholder text
     if (file[`hdu${selectedHdu}`].encoded_image) {
-        document.getElementById('imageDiv').style.display = 'block';
+        document.getElementById('imageAndTableContainer').style.display = 'flex';
         document.getElementById('placeholderText').style.display = 'none';
         document.getElementById('imageErrorText').style.display = 'none';
     } else {
-        document.getElementById('imageDiv').style.display = 'none';
+        document.getElementById('imageAndTableContainer').style.display = 'none';
         document.getElementById('placeholderText').style.display = 'block';
         document.getElementById('imageErrorText').style.display = 'none';
     }
@@ -353,7 +353,7 @@ window.addEventListener('message', async event => {
         setLoading(false);
         console.log(`Error encountered while rerendering for ${message.reason}.`);
         console.log(message.error);
-        document.getElementById('imageDiv').style.display = 'none';
+        document.getElementById('imageAndTableContainer').style.display = 'none';
         document.getElementById('placeholderText').style.display = 'none';
         document.getElementById('imageErrorText').style.display = 'block';
     }
@@ -372,10 +372,7 @@ async function updateImageContent(data) {
 
     // Get a reference to VS Code
     const imageAndTableContainer = document.getElementById('imageAndTableContainer');
-
-    // Get the current scripts
     const imageDiv = document.getElementById('imageDiv');
-    const currentScripts = Array.from(imageDiv.querySelectorAll('script'));
 
     // Parse the data
     const { file, selectedHdu, _ } = JSON.parse(data);
@@ -433,7 +430,7 @@ async function updateImageContent(data) {
                 document.getElementById('tableData').innerHTML = renderTableAsDataGrid(colNames, rows);
             }
         } else{
-            if (!document.getElementById('tableDiv')) {
+            if (document.getElementById('tableDiv')) {
             // Update the image content
             imageAndTableContainer.innerHTML = `
             <div id="imageDiv" class="responsive-plot" style="width: 100%">
@@ -485,6 +482,8 @@ async function updateClimInputFields(data) {
 
     const vminEl = document.getElementById("vmin")
     const vmaxEl = document.getElementById("vmax")
+
+    if (!vminEl || !vmaxEl) return;
 
     vminEl.value = formatClimValue(values.vmin);
     vmaxEl.value = formatClimValue(values.vmax);

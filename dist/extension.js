@@ -40,6 +40,7 @@ var import_child_process = require("child_process");
 var osvar = process.platform;
 var path = require("path");
 var requirements = path.join(__dirname, "python/requirements.txt");
+var shellQuote = (s) => "'" + s.replace(/'/g, `'"'"'`) + "'";
 var CustomEditorProvider = class {
   constructor(_context) {
     this._context = _context;
@@ -77,7 +78,7 @@ var CustomEditorProvider = class {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv=\u201CContent-Security-Policy\u201D content=\u201Cfont-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;\u201C>
+            <meta http-equiv="Content-Security-Policy" content="font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Your Custom Editor</title>
             <link href="${stylePath}" rel="stylesheet" type="text/css" >
@@ -156,7 +157,7 @@ var CustomEditorProvider = class {
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
                     <h2 id="placeholderText" style="display: none;">No image to display.</h2>
-                    <h2 id="imageErrorText" style="display: none; color: red ">Error loading image.</h2>
+                    <h2 id="imageErrorText" style="display: none; color: red;">Error loading image.</h2>
                 </div>
             </div>
             <script type="module" src="${webviewUri}"></script>
@@ -559,7 +560,8 @@ var CustomDocument = class {
         command = pythonInterpreterPath;
       }
       const pythonScriptPath = path.join(__dirname, "python", "generate_image.py");
-      const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options).join(" ");
+      const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options).map((arg) => shellQuote(String(arg))).join(" ");
+      command = shellQuote(command);
       const activationCommand = "";
       const combinedCommand = `
                 ${activationCommand} > /dev/null 2>&1 &&
@@ -644,6 +646,7 @@ function activate(context) {
   } else {
     command = pythonInterpreterPath;
   }
+  command = shellQuote(command);
   const activationCommand = "";
   const combinedCommand = `
         ${activationCommand} > /dev/null 2>&1 &&

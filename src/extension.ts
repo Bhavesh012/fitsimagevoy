@@ -9,6 +9,7 @@ import { spawn } from 'child_process';
 const osvar = process.platform;
 const path = require("path");
 const requirements = path.join(__dirname, "python/requirements.txt");
+const shellQuote = (s: string) => "'" + s.replace(/'/g,`'"'"'`) + "'";
 
 type Clim = { vmin: number | null; vmax: number | null };
 type TableCols = { x: string | null; y: string | null};
@@ -89,7 +90,7 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv=“Content-Security-Policy” content=“font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;“>
+            <meta http-equiv="Content-Security-Policy" content="font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Your Custom Editor</title>
             <link href="${stylePath}" rel="stylesheet" type="text/css" >
@@ -168,7 +169,7 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
                     <h2 id="placeholderText" style="display: none;">No image to display.</h2>
-                    <h2 id="imageErrorText" style="display: none; color: red ">Error loading image.</h2>
+                    <h2 id="imageErrorText" style="display: none; color: red;">Error loading image.</h2>
                 </div>
             </div>
             <script type="module" src="${webviewUri}"></script>
@@ -687,7 +688,9 @@ class CustomDocument implements vscode.CustomDocument {
             }
 
             const pythonScriptPath = path.join(__dirname, 'python', 'generate_image.py');
-            const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options).join(' ')
+            const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options)
+            .map((arg) => shellQuote(String(arg))).join(' ');
+            command = shellQuote(command)
 
             //const command = osvar === 'win32' ? 'python' : 'python3';
             //const activationCommand = 'source /sdf/group/rubin/sw/w_latest/loadLSST.bash';
@@ -777,8 +780,6 @@ function buildPythonArgs(scriptPath: string, fitsFilePath: string, options: Rend
     add("--plot_type", options.plotType);
     add("--point_size", options.pointSize);
 
-    
-
     return args;
 }
 
@@ -793,6 +794,8 @@ export function activate(context: vscode.ExtensionContext) {
     } else {
         command = pythonInterpreterPath;
     }
+
+    command = shellQuote(command)
     
     //const activationCommand = 'source /sdf/group/rubin/sw/w_latest/loadLSST.bash';
     const activationCommand = '';

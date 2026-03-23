@@ -174,10 +174,18 @@ def generate_plot_and_table(hdu, x_col: str | None = None, y_col: str | None = N
     data = hdu.data
     table = Table(data)
 
-    if x_col is None:
-        x_col = next(c for c in table.colnames if c != y_col)
-    if y_col is None:
-        y_col = next(c for c in table.colnames if c != x_col)
+    if len(colnames := table.colnames) == 1:
+        y_col = colnames[0]
+        y = np.asarray(table[y_col])
+        x = np.arange(1, len(y)+1)
+        x_col = "Index"
+    else:
+        if x_col is None:
+            x_col = next(c for c in table.colnames if c != y_col)
+        if y_col is None:
+            y_col = next(c for c in table.colnames if c != x_col)
+        x = np.asarray(table[x_col])
+        y = np.asarray(table[y_col])
 
     # lightweight kwargs parsing
     plot_type = kwargs.get("plot_type") or "line"
@@ -187,25 +195,36 @@ def generate_plot_and_table(hdu, x_col: str | None = None, y_col: str | None = N
 
     fig, ax = plt.subplots()
 
-    x = table[x_col]
-    y = table[y_col]
+    valid = np.ones_like(x, dtype=bool)
+    valid &= np.isfinite(x) & np.isfinite(y)
+    valid &= np.logical_not(np.isnan(x)) & np.logical_not(np.isnan(y))
+
+    if x_scale:
+        if x_scale == "log":
+            valid &= x > 0
+        ax.set_xscale(x_scale.lower())
+    if y_scale:
+        if y_scale == "log":
+            valid &= y > 0
+        ax.set_yscale(y_scale.lower())
+
+    x = x[valid]
+    y = y[valid]
 
     if plot_type == "scatter":
         if point_size is None:
-            ax.scatter(x, y)                            # type: ignore
+            ax.plot(x, y,linestyle='', marker="o")
         else:
-            ax.scatter(x, y, s=point_size)              # type: ignore
+            ax.plot(x, y,linestyle='', marker="o", markersize=point_size)
     elif plot_type == "step":
-        ax.step(x, y, where='mid')                      # type: ignore
+        order = np.argsort(x)
+        x = x[order]
+        y = y[order]
+        ax.step(x, y, where='mid')                 
     elif plot_type == "line_scatter":
-        ax.plot(x, y, marker="o", markersize=point_size)    # type: ignore
+        ax.plot(x, y, marker="o", markersize=point_size)
     else:
-        ax.plot(x, y)                                       # type: ignore
-
-    if x_scale:
-        ax.set_xscale(x_scale.lower())
-    if y_scale:
-        ax.set_yscale(y_scale.lower())
+        ax.plot(x, y)
 
     # Add tag with image options
     selected_options = f"{y_col} vs {x_col}".title()
