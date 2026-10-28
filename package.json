@@ -3,7 +3,7 @@
   "displayName": "FitsImageVOY",
   "icon": "./assets/images/appIcon.png",
   "description": "Visualize FITS files with VSCode.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "publisher": "fits",
   "engines": {
     "vscode": "^1.75.0"
@@ -17,22 +17,50 @@
   "main": "./dist/extension.js",
   "contributes": {
     "configuration": {
-      "myExtension.defaultColormap": {
-        "type": "string",
-        "default": "viridis",
-        "description": "Default colormap for the extension plots."
-      },
-      "myExtension.defaultScale": {
-        "type": "string",
-        "default": "linear",
-        "enum": [
-          "linear",
-          "logarithmic",
-          "power",
-          "sqrt",
-          "squared"
-        ],
-        "description": "Default scale for the extension plots."
+      "properties": {
+        "fitsimagevoy.defaultColormap": {
+          "type": "string",
+          "default": "viridis",
+          "description": "Default colormap for the extension plots."
+        },
+        "fitsimagevoy.defaultScale": {
+          "type": "string",
+          "default": "linear",
+          "enum": [
+            "linear",
+            "logarithmic",
+            "power",
+            "sqrt",
+            "squared"
+          ],
+          "description": "Default scale for the extension plots."
+        },
+        "fitsimagevoy.defaultPlotType": {
+          "type": "string",
+          "default": "line",
+          "enum": [
+            "line",
+            "scatter",
+            "line_scatter",
+            "step"
+          ],
+          "description": "Default plot type used when displaying binary table HDUs."
+        },
+        "fitsimagevoy.defaultPointSize": {
+          "type": "float",
+          "default": 1,
+          "description": "Default point size used for scatter-type plots."
+        },
+        "fitsimagevoy.hduLabels": {
+          "type": "string",
+          "default": "index",
+          "enum": [
+            "index",
+            "name",
+            "nameAndIndex"
+          ],
+          "description": "How HDUs are labeled in the dropdown."
+        }
       }
     },
     "customEditors": [
@@ -54,7 +82,8 @@
     "out",
     "webview",
     "src",
-    "assets"
+    "assets",
+    "dist"
   ],
   "type": "commonjs",
   "scripts": {

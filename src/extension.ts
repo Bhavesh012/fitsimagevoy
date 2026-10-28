@@ -5,11 +5,26 @@
 // Import the relevant modules
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
-import { ChildProcess, spawn } from 'child_process';
+import { spawn } from 'child_process';
 const osvar = process.platform;
 const path = require("path");
 const requirements = path.join(__dirname, "python/requirements.txt");
+const shellQuote = (s: string) => "'" + s.replace(/'/g,`'"'"'`) + "'";
 
+type Clim = { vmin: number | null; vmax: number | null };
+type TableCols = { x: string | null; y: string | null};
+type TableScale = { x: 'linear' | 'log' ; y: 'linear' | 'log' };
+
+type RenderOptions = {
+  colormap: string;
+  scale: 'linear' | 'logarithmic' | 'sqrt' | 'power' | 'squared';
+  clim: Clim;
+  cols: TableCols;
+  tableScale: TableScale;
+  pointSize: number;
+  plotType: string;
+  hduLabels: string;
+};
 
 // Implement the CustomTextEditorProvider interface
 class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
@@ -60,8 +75,8 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         const webviewUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'dist/webview.js'));
         const appIconUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'assets/images/appIcon.png'));
         const kipacLogoUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'assets/images/KIPAC_stack.png'));
-        const codiconsUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'node_modules/vscode/codicons/dist/codicon.css'));
-        const codiconsFontUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'node_modules', 'vscode/codicons', 'dist', 'codicon.ttf'));
+        const codiconsUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'node_modules/@vscode/codicons/dist/codicon.css'));
+        const codiconsFontUri = webviewPanel.webview.asWebviewUri(vscode.Uri.joinPath(this._context.extensionUri, 'node_modules', '@vscode/codicons', 'dist', 'codicon.ttf'));
 
         // Generate a nonce to add to the script element
         const randomBytes = crypto.randomBytes(16);
@@ -75,10 +90,11 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         <html lang="en">
         <head>
             <meta charset="UTF-8">
-            <meta http-equiv=“Content-Security-Policy” content=“font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: ‘unsafe-inline’; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: ‘unsafe-inline’; script-src ‘self’ ‘self’ https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io ‘unsafe-inline’; img-src ‘self’ ‘self’ https://*.vscode-cdn.net data:;“>
+            <meta http-equiv="Content-Security-Policy" content="font-src ${webviewPanel.webview.cspSource} ${codiconsFontUri} vscode-resource: 'unsafe-inline'; style-src ${webviewPanel.webview.cspSource} ${codiconsUri} vscode-resource: 'unsafe-inline'; script-src 'self' 'self' https://*.vscode-cdn.net https://d3js.org https://mpld3.github.io 'unsafe-inline'; img-src 'self' 'self' https://*.vscode-cdn.net data:;">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
                         <title>Your Custom Editor</title>
             <link href="${stylePath}" rel="stylesheet" type="text/css" >
+            <link href="${codiconsUri}" rel="stylesheet" type="text/css">
         </head>
         <body>
             <!-- Header Section -->
@@ -106,15 +122,25 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                             <vscode-data-grid id="basic-grid" aria-label="Basic"></vscode-data-grid>
                         </div>
 
-                        <vscode-divider role="presentation"></vscode-divider>
+                        <div id="optionContainer">
 
-                        <vscode-radio-group id="colorSelector"></vscode-radio-group>
+                            <vscode-divider role="presentation"></vscode-divider>
+                            
+                            <div id="selector1"></div>
 
-                        <vscode-divider role="presentation"></vscode-divider>
+                            <vscode-divider role="presentation"></vscode-divider>
 
-                        <vscode-radio-group id="scaleSelector"></vscode-radio-group>
+                            <div id="selector2"></div>
+
+                            <vscode-divider role="presentation"></vscode-divider>
+
+                            <div id="selector3"></div>
+
+                        </div>
 
                     </div>
+
+                    <div class="section-divider vertical" data-resize="optionsSection|headerInfoSection"></div>
         
                     <!-- Header Info Section -->
                     <div id="headerInfoSection">
@@ -128,37 +154,188 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                     </div>
                 </div>
         
-                <vscode-divider role="presentation"></vscode-divider>
+                <div class="section-divider horizontal" data-resize="headerInfoContainer|imageSection"></div>
                 
                 <!-- Image Section -->
                 <div id="imageSection">
-                    <div id="imageDiv" class="responsive-plot">
-                        ${isImage ? document.file[selected].html_plot : ''}
+                    <div id="imageLoadingOverlay" hidden>
+                        <span class="codicon codicon-loading codicon-modifier-spin"></span>
+                    </div>
+                    <div id="imageAndTableContainer">
+                        <div id="imageDiv" class="responsive-plot">
+                            ${isImage ? document.file[selected].html_plot : ''}
+                        </div>
                     </div>
                     <!-- Add your image or placeholder here -->
                     <!--  <img id="fits-image" alt="FITS Image" src="" onerror="showPlaceholder()"> -->
                     <h2 id="placeholderText" style="display: none;">No image to display.</h2>
+                    <h2 id="imageErrorText" style="display: none; color: red;">Error loading image.</h2>
                 </div>
             </div>
             <script type="module" src="${webviewUri}"></script>
             <script>
                 const vscode = acquireVsCodeApi();
 
+                // Update overlay when image is loading
+                function setLoading(isLoading) {
+                    const overlay = document.getElementById('imageLoadingOverlay');
+                    if (!overlay) return;
+                    overlay.hidden = !isLoading;
+                }
+
                 // Update the color value in the options
                 function updateColor(event) {
+                    setLoading(true);
                     // Post a message to VS Code
                     vscode.postMessage({
                         command: 'colormapChanged',
-                        newColormap: event
+                        newColormap: event,
                     });
                 }
 
                 // Update the scale value in the options
                 function updateScale(event) {
+                    setLoading(true);
                     // Post a message to VS Code
                     vscode.postMessage({
                         command: 'scaleChanged',
-                        newScale: event
+                        newScale: event,
+                        newClim: { vmin: null, vmax: null } // tells backend to use auto/matplotlib defaults
+                    });
+                }
+                
+                // Validate number pattern using regex
+                const numberPattern = /^[+-]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][+-]?\\d+)?$/;
+
+                function parseValidNumber(text) {
+                    if (!numberPattern.test(text)) return null;
+                    const n = Number(text);
+                    return Number.isFinite(n) ? n : null;
+                }
+
+                function validateNumbers() {
+
+                    const vminEl = document.getElementById('vmin');
+                    const vmaxEl = document.getElementById('vmax');
+
+                    const vminRaw = vminEl.value.trim();
+                    const vmaxRaw = vmaxEl.value.trim();
+
+                    const vmin = vminRaw === '' ? null : parseValidNumber(vminRaw);
+                    const vmax = vmaxRaw === '' ? null : parseValidNumber(vmaxRaw);
+
+                    const vminHasValue = vminRaw !== '';
+                    const vmaxHasValue = vmaxRaw !== '';
+
+                    let vminInvalid = vminHasValue && vmin === null;
+                    let vmaxInvalid = vmaxHasValue && vmax === null;
+
+                    const bothValidNumbers = vmin !== null && vmax !== null;
+                    const rangeInvalid = bothValidNumbers && !(vmin < vmax);
+
+                    if (rangeInvalid) {
+                        vminInvalid = true;
+                        vmaxInvalid = true;
+                    }
+
+                    const applyInvalid = (el, isInvalid) => {
+                        el.toggleAttribute('invalid', isInvalid);
+                        if (isInvalid) {
+                            el.setAttribute('aria-invalid', 'true');
+                        } else {
+                            el.removeAttribute('aria-invalid');
+                        }
+                    };
+
+                    applyInvalid(vminEl, vminInvalid);
+                    applyInvalid(vmaxEl, vmaxInvalid);
+
+                    if (!bothValidNumbers || rangeInvalid) return;
+
+                    return {vmin, vmax};
+                }
+
+                // Update the clim value in the options
+                function updateClim() {
+
+                    const clim = validateNumbers()
+
+                    if (!clim) return;
+
+                    // If number are valid, update as usual
+                    setLoading(true);
+                    // Post a message to VS Code
+                    vscode.postMessage({
+                       command: 'climChanged',
+                       newClim: clim
+                    });
+                }
+
+                function resetClim() {
+                    const vminEl = document.getElementById('vmin');
+                    const vmaxEl = document.getElementById('vmax');
+                    if (vminEl) vminEl.value = '';
+                    if (vmaxEl) vmaxEl.value = '';
+                    
+                    setLoading(true);
+                    vscode.postMessage({
+                        command: 'climReset',
+                        newClim: { vmin: null, vmax: null } // tells backend to use auto/matplotlib defaults
+                    });
+                }
+
+                function updateCols() {
+                    setLoading(true);
+
+                    const xColEl = document.getElementById("xColSelect")
+                    const yColEl = document.getElementById("yColSelect")
+                    
+                    newCols = { x: xColEl.value, y: yColEl.value}
+                    vscode.postMessage({
+                        command: 'colsChanged',
+                        newCols: newCols
+                    });
+                }
+                
+                // Update the scale value in the options
+                function updateXTableScale(event) {
+                    setLoading(true);
+
+                    // Post a message to VS Code
+                    vscode.postMessage({
+                        command: 'tableXScaleChanged',
+                        newXScale: event,
+                    });
+                }
+
+                function updateYTableScale(event) {
+                    setLoading(true);
+
+                    // Post a message to VS Code
+                    vscode.postMessage({
+                        command: 'tableYScaleChanged',
+                        newYScale: event,
+                    });
+                }
+                
+                function interactivePointSize(event) {
+                    const psv = document.getElementById("pointSizeValue");
+                    psv.innerHTML = event;
+                }
+
+                function updatePointSize(event) {
+                    setLoading(true);
+                    vscode.postMessage({
+                        command: 'pointSizeChanged',
+                        newPointSize: event,
+                    });
+                }
+
+                function updatePlotType(event) {
+                    setLoading(true);
+                    vscode.postMessage({
+                        command: 'plotTypeChanged',
+                        newPlotType: event,
                     });
                 }
 
@@ -218,10 +395,80 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
         };
     
         // Call the open method to load the header
-        await document.open();
+        try {
+            await document.open();
+        } catch (error) {
+            vscode.window.showErrorMessage(`FitsImageVOY: failed to open FITS file: ${String(error)}`);
+            return;
+        }
 
         // Set the webview for the document
         await this.setWebviewForDocument(document, webviewPanel);
+
+        // Definition for "Dark VSCode Themes"
+        const darkKinds = [
+            vscode.ColorThemeKind.Dark,
+            vscode.ColorThemeKind.HighContrast
+        ];
+
+        // Send user theme info to webviewPanel
+        function updateTheme() {
+          webviewPanel.webview.postMessage({
+            command: 'updateTheme',
+            data: darkKinds.includes(vscode.window.activeColorTheme.kind)
+          });
+        }
+    
+        // update when the user changes theme
+        const themeListener = vscode.window.onDidChangeActiveColorTheme(() => updateTheme());
+        webviewPanel.onDidDispose(() => themeListener.dispose());
+
+        // Setup for render only last image options
+        const COALESCE_MS = 150;
+        let coalesceTimer: NodeJS.Timeout | undefined;
+        let latestRenderRequestId = 0;
+
+        const buildImagePayload = () =>
+            JSON.stringify({
+                file: document.file,
+                selectedHdu: document.selectedHdu,
+                options: document.options
+            });
+
+        const scheduleImageRender = (reason: string) => {
+            latestRenderRequestId += 1;
+            const requestId = latestRenderRequestId;
+
+            if (coalesceTimer) {
+                clearTimeout(coalesceTimer);
+            }
+
+            coalesceTimer = setTimeout(async () => {
+                coalesceTimer = undefined;
+
+                try {
+                    await document.open();
+                } catch (error) {
+                    vscode.window.showErrorMessage(`FitsImageVOY: Encountered rendering error: ${String(error)}`);
+                    await webviewPanel.webview.postMessage({
+                        command: 'renderError',
+                        error: String(error),
+                        reason: reason,
+                    });
+                    return;
+                }
+
+                if (requestId !== latestRenderRequestId) {
+                    return; // Stale request, drop it
+                }
+
+                await webviewPanel.webview.postMessage({
+                    command: 'updateImage',
+                    data: buildImagePayload(),
+                    reason: reason,
+                });
+            }, COALESCE_MS);
+        };
 
         // Handle messages from the webview
         webviewPanel.webview.onDidReceiveMessage(
@@ -233,46 +480,90 @@ class CustomEditorProvider implements vscode.CustomReadonlyEditorProvider {
                         await this.setWebviewForDocument(document, webviewPanel);
                         break;
                     case 'doneLoading':
-                        const documentDataJson = JSON.stringify({
-                            file: document.file,
-                            selectedHdu: document.selectedHdu,
-                            options: document.options,
-                        });
+
+                        updateTheme();
 
                         await webviewPanel.webview.postMessage({
                             command: 'updateHeaderInfo', 
-                            data: documentDataJson 
+                            data: buildImagePayload() 
                         });
+
+                        await webviewPanel.webview.postMessage({ 
+                            command: 'updateImage', 
+                            data: buildImagePayload(), 
+                            reason: 'initialLoad' 
+                        });
+
                         break;
+
                     // Handle colormap change
                     case 'colormapChanged':
                         document.options.colormap = message.newColormap;
 
-                        await document.open();
+                        scheduleImageRender(message.command); 
 
-                        webviewPanel.webview.postMessage({ 
-                            command: 'updateImage', 
-                            data: JSON.stringify({
-                                file: document.file,
-                                selectedHdu: document.selectedHdu,
-                                options: document.options,
-                            })
-                        });
                         break;
                     // Handle scale change
                     case 'scaleChanged':
                         document.options.scale = message.newScale;
+                        document.options.clim = message.newClim;
 
-                        await document.open();
+                        scheduleImageRender(message.command);
 
-                        webviewPanel.webview.postMessage({ 
-                            command: 'updateImage', 
-                            data: JSON.stringify({
-                                file: document.file,
-                                selectedHdu: document.selectedHdu,
-                                options: document.options,
-                            })
-                        });
+                        break;
+
+                    // Handle clim change
+                    case 'climChanged':
+                        document.options.clim = message.newClim;
+                        
+                        scheduleImageRender(message.command);
+
+                        break;
+
+                    // Handle clim reset
+
+                    case 'climReset':
+                        document.options.clim = message.newClim;
+
+                        scheduleImageRender(message.command);
+
+                        break;
+
+                    // Table option changes
+
+                    case 'colsChanged':
+                        document.options.cols = message.newCols;
+
+                        scheduleImageRender(message.command);
+
+                        break;
+
+                    case 'tableXScaleChanged':
+                        document.options.tableScale.x = message.newXScale;
+
+                        scheduleImageRender(message.command);
+
+                        break;
+                    
+                    case 'tableYScaleChanged':
+                        document.options.tableScale.y = message.newYScale;
+
+                        scheduleImageRender(message.command);
+
+                        break;
+
+                    case 'pointSizeChanged':
+                        document.options.pointSize = message.newPointSize;
+
+                        scheduleImageRender(message.command);
+
+                        break;
+
+                    case 'plotTypeChanged':
+                        document.options.plotType = message.newPlotType;
+
+                        scheduleImageRender(message.command);
+
                         break;
                 }
             },
@@ -300,9 +591,22 @@ class CustomDocument implements vscode.CustomDocument {
         const configuration = vscode.workspace.getConfiguration('fitsimagevoy');
         const defaultColormap = configuration.get('defaultColormap', 'viridis');
         const defaultScale = configuration.get('defaultScale', 'linear');
+        const defaultClim = configuration.get('defaultClim', { vmin: null, vmax: null });
+        const defaultCols = configuration.get('defaultCols', { x: null, y: null });
+        const defaultTableScale = configuration.get('defaultTableScale', { x: 'linear', y: 'linear'});
+        const defaultPointSize = configuration.get('defaultPointSize', 1);
+        const defaultPlotType = configuration.get('defaultPlotType', 'line');
+        const hduLabels = configuration.get('hduLabels', 'index');
         this.options = {
             'colormap': defaultColormap,
             'scale': defaultScale,
+            'clim': defaultClim,
+            'cols': defaultCols,
+            'tableScale': defaultTableScale,
+            'pointSize': defaultPointSize,
+            'plotType': defaultPlotType,
+            'hduLabels': hduLabels,
+
         }; 
     }
     get uri(): vscode.Uri {
@@ -314,7 +618,7 @@ class CustomDocument implements vscode.CustomDocument {
     }
 
     set file(value: any) {
-        this._selectedHdu = value;
+        this._file = value;
     }
 
     get options(): any {
@@ -341,23 +645,26 @@ class CustomDocument implements vscode.CustomDocument {
          * @returns void
          */
         
-        this._file = await this.generateImageFromFits(this._uri.fsPath, this._options['colormap'], this._options['scale']);
+        this._file = await this.generateImageFromFits(this._uri.fsPath, this._options);
 
         // Initialize a variable to store the selected element
-        this._selectedHdu = 0;
+        if (!Number.isInteger(this._selectedHdu) || !this._file[`hdu${this._selectedHdu}`]) {
+            this._selectedHdu = 0; // If selectedHdu isn't set or isn't valid, fallback to HDU 0
+        
 
-        // Iterate over the elements and find the first one with encoded_image not equal to none
-        for (const key in this._file) {
-            const element = this._file[key];
+            // Iterate over the elements and find the first one with encoded_image not equal to none
+            for (const key in this._file) {
+                const element = this._file[key];
 
-            if (element['encoded_image'] !== false) {
-                this._selectedHdu = parseInt(key.replace('hdu', ''), 10);
-                break;
+                if (element['encoded_image'] !== false) {
+                    this._selectedHdu = parseInt(key.replace('hdu', ''), 10);
+                    break;
+                }
             }
         }
     }
 
-    async generateImageFromFits(fitsFilePath: string, colormap: string, scale: string): Promise<any> {
+    async generateImageFromFits(fitsFilePath: string, options: RenderOptions): Promise<any> {
         /**
          * This function reads a FITS file and returns the image data, headers and html.
          * It connects with python to run this process.
@@ -379,49 +686,101 @@ class CustomDocument implements vscode.CustomDocument {
             } else {
                 command = pythonInterpreterPath;
             }
-        
+
+            const pythonScriptPath = path.join(__dirname, 'python', 'generate_image.py');
+            const argv = buildPythonArgs(pythonScriptPath, fitsFilePath, options)
+            .map((arg) => shellQuote(String(arg))).join(' ');
+            command = shellQuote(command)
+
             //const command = osvar === 'win32' ? 'python' : 'python3';
             //const activationCommand = 'source /sdf/group/rubin/sw/w_latest/loadLSST.bash';
             const activationCommand = '';
-            const pythonScriptPath = path.join(__dirname, 'python', 'generate_image.py');
             const combinedCommand = `
                 ${activationCommand} > /dev/null 2>&1 &&
-                ${command} ${pythonScriptPath} "${fitsFilePath}" ${colormap} ${scale}
+                ${command} ${argv}
             `;
 
             // Combine activation and Python commands
             const pythonProcess = spawn('bash', ['-c', combinedCommand]);
             
             let result = '';  // Variable to store the base64-encoded image data
+            let stderrText = '';
+            let settled = false;
+
+            // Prevent accidental duplicate promise resolves/rejects (easier debugging)
+            const failOnce = (err: Error) => {
+                if (settled) return;
+                settled = true;
+                reject(err);
+            };
+
+            const resolveOnce = (value: any) => {
+                if (settled) return;
+                settled = true;
+                resolve(value);
+            };
+
             if (pythonProcess?.stdout && pythonProcess?.stderr) {
+
                 pythonProcess.stdout.on('data', (data) => {
                     // Handle data received from the Python script
                     result += data.toString();
                 });
         
                 pythonProcess.stderr.on('data', (data) => {
-                    // Handle errors or messages from the Python script
-                    console.error(`Python stderr: ${data}`);
-                    reject(new Error(`Failed to generate image from FITS file.`));
+                    stderrText += data.toString(); // collect, but do not fail yet
+                });
+
+                pythonProcess.on('error', (err) => {
+                    failOnce(new Error(`Failed to start Python process: ${String(err)}`))
                 });
         
-                pythonProcess.on('exit', (code) => {
+                pythonProcess.on('close', (code) => {
+                    // Check for positive exit
+                    if (code !== 0) {
+                        return failOnce(
+                            new Error(
+                            `Failed to generate image from FITS file (exit ${code}). ${stderrText.trim() || result.trim() || 'No output.'}`
+                        ));
+                    }
+
                     try {
                         const output = JSON.parse(result);
-                        resolve(output);
+                        resolveOnce(output);
                     } catch (error) {
-                        console.error(`Failed to parse Python script output: ${error}`);
-                        reject(new Error(`Failed to generate image from FITS file.`));
+                        failOnce(
+                            new Error(
+                                `Failed to parse Python output as JSON. ${stderrText.trim() || String(error)}`
+                            )
+                        )
                     }
                 });
             } else {
-                reject(new Error('Failed to start the Python process.'));
+                failOnce(new Error('Failed to start the Python process.'));
             }
         
         });
     }
 
 	dispose(): void {}
+}
+
+function buildPythonArgs(scriptPath: string, fitsFilePath: string, options: RenderOptions): string[] {
+
+    const args = [scriptPath, fitsFilePath];
+    const add = (flag: string, val: unknown) => { if (val !== undefined && val !== null) args.push(flag, String(val)); };
+    add("--colormap", options.colormap);
+    add("--scale", options.scale);
+    add("--vmin", options.clim?.vmin);
+    add("--vmax", options.clim?.vmax);
+    add("--x_col", options.cols?.x);
+    add("--y_col", options.cols?.y);
+    add("--table_scale_x", options.tableScale?.x);
+    add("--table_scale_y", options.tableScale?.y);
+    add("--plot_type", options.plotType);
+    add("--point_size", options.pointSize);
+
+    return args;
 }
 
 // Activate the extension
@@ -435,6 +794,8 @@ export function activate(context: vscode.ExtensionContext) {
     } else {
         command = pythonInterpreterPath;
     }
+
+    command = shellQuote(command)
     
     //const activationCommand = 'source /sdf/group/rubin/sw/w_latest/loadLSST.bash';
     const activationCommand = '';
